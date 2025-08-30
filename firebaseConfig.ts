@@ -16,10 +16,10 @@
 // 8. INCOLLA l'oggetto che hai copiato qui sotto, sostituendo l'oggetto `firebaseConfig` di esempio.
 
 export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCkCqg2EYaHogb1YjZmQzh_4h8k5pwRGgw",
+  authDomain: "ultima-prova-serale.firebaseapp.com",
+  projectId: "ultima-prova-serale",
+  storageBucket: "ultima-prova-serale.firebasestorage.app",
+  messagingSenderId: "681649250795",
+  appId: "1:681649250795:web:6f367959aa6709b0ad39ae"
 };
