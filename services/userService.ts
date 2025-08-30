@@ -8,6 +8,8 @@ const usersCollection = collection(db, 'users');
 // 1. Create a 'users' collection.
 // 2. Add a document for the 'master' user with fields:
 //    { username: 'master', name: 'Admin', isActive: true }
+// 3. You can also add a demo user, e.g.,
+//    { username: 'mario.rossi', name: 'Mario Rossi', isActive: true, password: 'password123' }
 
 export const userService = {
   async getUsers(): Promise<User[]> {
