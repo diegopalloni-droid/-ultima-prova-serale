@@ -11,14 +11,13 @@ const areDatesEqual = (date1: string, date2: string): boolean => {
 
 export const reportService = {
   async getReports(user: User, isMasterUser: boolean): Promise<SavedReport[]> {
-    const oneMonthAgo = new Date();
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
-
     let q;
     if (isMasterUser) {
-        q = query(reportsCollection, where('date', '>=', oneMonthAgo.toISOString()), orderBy('date', 'desc'));
+        // Query for all reports, ordered by date
+        q = query(reportsCollection, orderBy('date', 'desc'));
     } else {
-        q = query(reportsCollection, where('userId', '==', user.id), where('date', '>=', oneMonthAgo.toISOString()), orderBy('date', 'desc'));
+        // Query for a specific user's reports, ordered by date
+        q = query(reportsCollection, where('userId', '==', user.id), orderBy('date', 'desc'));
     }
     
     const querySnapshot = await getDocs(q);
