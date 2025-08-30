@@ -1,0 +1,5 @@
+{
+  "name": "ultima-prova-serale",
+  "description": "An application that allows users to save a pre-compiled and unmodifiable text template to their device as a .txt file.",
+  "requestFramePermissions": []
+}
