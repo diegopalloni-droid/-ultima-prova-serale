@@ -9,9 +9,21 @@ const usersCollection = db.collection('users');
 //    { username: 'master', name: 'Admin', isActive: true }
 
 export const userService = {
-  async getUsers(): Promise<User[]> {
-    const querySnapshot = await usersCollection.get();
-    return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as User));
+  listenForUsers(
+    callback: (users: User[]) => void,
+    onError: (error: Error) => void
+  ): () => void {
+    const unsubscribe = usersCollection.onSnapshot(querySnapshot => {
+        const users = querySnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        } as User));
+        callback(users);
+    }, error => {
+        console.error("Error listening for user updates:", error);
+        onError(error);
+    });
+    return unsubscribe;
   },
 
   async getUserByUsername(username: string): Promise<User | null> {

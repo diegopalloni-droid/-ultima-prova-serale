@@ -9,7 +9,12 @@ const areDatesEqual = (date1: string, date2: string): boolean => {
 };
 
 export const reportService = {
-  async getReports(user: User, isMasterUser: boolean): Promise<SavedReport[]> {
+  listenForReports(
+    user: User,
+    isMasterUser: boolean,
+    callback: (reports: SavedReport[]) => void,
+    onError: (error: Error) => void
+  ): () => void {
     let q;
     if (isMasterUser) {
         // Query for all reports, ordered by date
@@ -19,11 +24,18 @@ export const reportService = {
         q = reportsCollection.where('userId', '==', user.id).orderBy('date', 'desc');
     }
     
-    const querySnapshot = await q.get();
-    return querySnapshot.docs.map(doc => ({
-        key: doc.id,
-        ...(doc.data() as { date: string, text: string, userId: string }),
-    } as SavedReport));
+    const unsubscribe = q.onSnapshot(querySnapshot => {
+        const reports = querySnapshot.docs.map(doc => ({
+            key: doc.id,
+            ...(doc.data() as { date: string, text: string, userId: string }),
+        } as SavedReport));
+        callback(reports);
+    }, error => {
+        console.error("Error listening for report updates:", error);
+        onError(error);
+    });
+
+    return unsubscribe;
   },
 
   async saveReport(userId: string, report: { date: string, text: string }): Promise<SavedReport> {

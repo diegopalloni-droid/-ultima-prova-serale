@@ -24,17 +24,27 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
   const [newPassword, setNewPassword] = useState('');
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
-  const fetchUsers = async () => {
-    setIsLoading(true);
-    const allUsers = await userService.getUsers();
-    // Filter out the master user so they cannot be edited/deleted
-    setUsers(allUsers.filter(u => u.username !== 'master'));
-    setIsLoading(false);
-  };
-
   useEffect(() => {
-    fetchUsers();
+    setIsLoading(true);
+    const unsubscribe = userService.listenForUsers(
+      (allUsers) => {
+        setUsers(allUsers.filter(u => u.username !== 'master'));
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error("Failed to listen for users:", error);
+        setError("Impossibile caricare gli utenti.");
+        setIsLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
+  
+  const fetchUsers = () => {
+    // This function is now effectively handled by the real-time listener.
+    // Kept here in case of future need for a manual refresh button.
+  };
 
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -45,7 +55,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
       setNewUsername('');
       setNewUserName('');
       setNewUserPassword('');
-      fetchUsers();
+      // No need to call fetchUsers(), listener will update the state
     } else {
       setError(result.message || 'Errore sconosciuto.');
     }
@@ -53,13 +63,13 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
   
   const handleToggleUserStatus = async (user: User) => {
     await userService.updateUser(user.id, { isActive: !user.isActive });
-    fetchUsers();
+    // No need to call fetchUsers()
   };
 
   const handleDeleteUser = async (userId: string) => {
     if (window.confirm("Sei sicuro di voler eliminare questo utente? L'azione è permanente.")) {
         await userService.deleteUser(userId);
-        fetchUsers();
+        // No need to call fetchUsers()
     }
   };
 
@@ -82,7 +92,6 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
           return;
       }
       await userService.updateUser(editingUser.id, { password: newPassword });
-      fetchUsers(); // Re-fetch users to show the update
       handleClosePasswordModal();
     }
   };
@@ -162,7 +171,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
                           type="text"
                           value={newUsername}
                           onChange={(e) => setNewUsername(e.target.value)}
-                          placeholder="es. mario.rossi"
+                          placeholder="es. nome.cognome"
                           className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                           required
                       />
@@ -174,7 +183,7 @@ const UserManagementPage: React.FC<UserManagementPageProps> = ({ navigateTo }) =
                           type="text"
                           value={newUserName}
                           onChange={(e) => setNewUserName(e.target.value)}
-                          placeholder="es. Mario Rossi"
+                          placeholder="es. Nome Cognome"
                           className="w-full px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                           required
                       />

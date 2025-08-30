@@ -27,6 +27,7 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
   const [loadingError, setLoadingError] = useState<string | null>(null);
   const [reportToDelete, setReportToDelete] = useState<SavedReport | null>(null);
   const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   
   // State for filtering
   const [startDate, setStartDate] = useState<string>('');
@@ -35,36 +36,57 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
   const [usersWithReports, setUsersWithReports] = useState<User[]>([]);
 
   useEffect(() => {
-    const loadData = async () => {
-      if (!user) return;
-      setIsLoading(true);
-      setLoadingError(null);
-      try {
-        const reports = await reportService.getReports(user, isMasterUser);
+    if (!user) return;
+
+    setIsLoading(true);
+    setLoadingError(null);
+
+    const unsubscribeReports = reportService.listenForReports(
+      user,
+      isMasterUser,
+      (reports) => {
         setSavedReports(reports);
-        
-        if (isMasterUser) {
-          const allUsers: User[] = await userService.getUsers();
-          const newMap = new Map<string, string>();
-          allUsers.forEach(u => newMap.set(u.id, u.name));
-          setUserMap(newMap);
-
-          const reportUserIds = new Set(reports.map(r => r.userId));
-          const usersWhoHaveReports = allUsers.filter(u => reportUserIds.has(u.id));
-          setUsersWithReports(usersWhoHaveReports);
-        }
-
-      } catch (error) {
-        console.error("Failed to load reports or users:", error);
+        if (isLoading) setIsLoading(false);
+      },
+      (error) => {
+        console.error(error);
         setLoadingError("Impossibile caricare i report. Controlla la tua connessione o riprova più tardi.");
-      } finally {
         setIsLoading(false);
       }
-    };
+    );
 
-    loadData();
+    let unsubscribeUsers: (() => void) | undefined;
+    if (isMasterUser) {
+      unsubscribeUsers = userService.listenForUsers(
+        (users) => {
+          setAllUsers(users);
+          const newMap = new Map<string, string>();
+          users.forEach(u => newMap.set(u.id, u.name));
+          setUserMap(newMap);
+        },
+        (error) => {
+          console.error(error);
+          setLoadingError("Impossibile caricare gli utenti. Controlla la tua connessione.");
+        }
+      );
+    }
+
+    return () => {
+      unsubscribeReports();
+      if (unsubscribeUsers) {
+        unsubscribeUsers();
+      }
+    };
   }, [user, isMasterUser]);
 
+  useEffect(() => {
+    if (isMasterUser) {
+      const reportUserIds = new Set(savedReports.map(r => r.userId));
+      const usersWhoHaveReports = allUsers.filter(u => reportUserIds.has(u.id));
+      setUsersWithReports(usersWhoHaveReports);
+    }
+  }, [savedReports, allUsers, isMasterUser]);
+  
   useEffect(() => {
     let reportsToFilter = [...savedReports];
 
@@ -141,7 +163,7 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
     if (!reportToDelete) return;
     try {
       await reportService.deleteReport(reportToDelete.key);
-      setSavedReports(currentReports => currentReports.filter(report => report.key !== reportToDelete.key));
+      // No need to manually update state, the listener will do it.
     } catch (error) {
       console.error("Failed to delete report:", error);
       alert("Errore durante l'eliminazione del report.");
