@@ -1,8 +1,7 @@
 import { SavedReport, User } from '../types';
 import { db } from './firebase';
-import { collection, getDocs, addDoc, doc, updateDoc, deleteDoc, query, where, orderBy } from 'firebase/firestore';
 
-const reportsCollection = collection(db, 'reports');
+const reportsCollection = db.collection('reports');
 
 // Helper to compare dates while ignoring time and timezone.
 const areDatesEqual = (date1: string, date2: string): boolean => {
@@ -14,13 +13,13 @@ export const reportService = {
     let q;
     if (isMasterUser) {
         // Query for all reports, ordered by date
-        q = query(reportsCollection, orderBy('date', 'desc'));
+        q = reportsCollection.orderBy('date', 'desc');
     } else {
         // Query for a specific user's reports, ordered by date
-        q = query(reportsCollection, where('userId', '==', user.id), orderBy('date', 'desc'));
+        q = reportsCollection.where('userId', '==', user.id).orderBy('date', 'desc');
     }
     
-    const querySnapshot = await getDocs(q);
+    const querySnapshot = await q.get();
     return querySnapshot.docs.map(doc => ({
         key: doc.id,
         ...(doc.data() as { date: string, text: string, userId: string }),
@@ -32,24 +31,24 @@ export const reportService = {
       ...report,
       userId,
     };
-    const docRef = await addDoc(reportsCollection, dataToSave);
+    const docRef = await reportsCollection.add(dataToSave);
     return { key: docRef.id, ...dataToSave };
   },
   
   async updateReport(reportKey: string, report: { date: string, text: string, userId: string }): Promise<SavedReport> {
-    const reportDocRef = doc(db, 'reports', reportKey);
-    await updateDoc(reportDocRef, report);
+    const reportDocRef = db.collection('reports').doc(reportKey);
+    await reportDocRef.update(report);
     return { key: reportKey, ...report };
   },
 
   async deleteReport(reportKey: string): Promise<void> {
-    const reportDocRef = doc(db, 'reports', reportKey);
-    await deleteDoc(reportDocRef);
+    const reportDocRef = db.collection('reports').doc(reportKey);
+    await reportDocRef.delete();
   },
   
   async checkDateConflict(userId: string, dateToCheck: string, currentReportKey: string | null): Promise<SavedReport | null> {
-    const q = query(reportsCollection, where('userId', '==', userId));
-    const querySnapshot = await getDocs(q);
+    const q = reportsCollection.where('userId', '==', userId);
+    const querySnapshot = await q.get();
     
     for (const doc of querySnapshot.docs) {
         // Ensure we are not checking the report against itself

@@ -7,6 +7,7 @@ import { SavedReport } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { reportService } from '../services/reportService';
 import { ArrowLeftIcon } from '../components/ArrowLeftIcon';
+import { DownloadIcon } from '../components/DownloadIcon';
 
 interface ReportCreatorProps {
   navigateTo: (page: Page) => void;
@@ -24,6 +25,24 @@ const formatDateForInput = (date: Date): string => {
 
 const getDefaultText = (date: Date) => `Report del ${formatDateForDisplay(date)}\n\n${REPORT_CONTENT_TEMPLATE}`;
 
+const formatTextForDoc = (text: string): string => {
+    const lines = text.split('\n');
+    return lines.map(line => {
+      const style = `font-family:Calibri,sans-serif;font-size:11.0pt;`;
+      if (line.trim() === '') return `<p style="margin:0;"><span style="${style}">&nbsp;</span></p>`;
+      if (/^Report del/.test(line)) return `<p style="margin:0;"><span style="${style}"><b>${line}</b></span></p>`;
+      
+      const match = line.match(/^(Visita n°\d+:|Riassunto visita:|Obiettivo prox visita:|Prox visita entro:)/);
+      if (match) {
+        const prefix = match[0];
+        const userText = line.substring(prefix.length);
+        return `<p style="margin:0;"><span style="${style}"><b>${prefix}</b>${userText}</span></p>`;
+      }
+      
+      return `<p style="margin:0;"><span style="${style}">${line}</span></p>`;
+    }).join('');
+};
+
 const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport, onEditReport }) => {
   
   const { user } = useAuth();
@@ -34,6 +53,7 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
   const [editingReportKey, setEditingReportKey] = useState<string | null>(null);
   const [dateConflict, setDateConflict] = useState<SavedReport | null>(null);
   const [isChecking, setIsChecking] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialReport) {
@@ -54,6 +74,35 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
     setVisitCount(count);
   }, [templateText]);
 
+  const handleDownloadLocally = () => {
+    try {
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const year = selectedDate.getFullYear();
+      const fileName = `Report ${day}-${month}-${year}.doc`;
+
+      const formattedContent = formatTextForDoc(templateText);
+      const htmlString = `
+          <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+            <head><meta charset='utf-8'><title>Report</title></head>
+            <body><div>${formattedContent}</div></body>
+          </html>`;
+
+      const blob = new Blob([htmlString], { type: 'application/msword' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error("Failed to download file:", error);
+        alert("Errore durante il download del report.");
+    }
+  };
+
   const handleSaveToCloud = async () => {
     if (!user) {
       setSaveButtonText('Errore');
@@ -62,6 +111,8 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
       return;
     }
     
+    setSaveError(null);
+    setDateConflict(null);
     setIsChecking(true);
     setSaveButtonText('Verifico...');
 
@@ -96,8 +147,8 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
       }, 1500);
     } catch (error) {
       console.error("Failed to save to cloud:", error);
-      setSaveButtonText('Errore');
-      setTimeout(() => setSaveButtonText('Salva'), 2000);
+      setSaveButtonText('Salva');
+      setSaveError("Non è stato possibile salvare il report sul cloud. Controlla la tua connessione e riprova.");
     } finally {
         setIsChecking(false);
     }
@@ -127,9 +178,49 @@ const ReportCreator: React.FC<ReportCreatorProps> = ({ navigateTo, initialReport
       setDateConflict(null);
     }
   };
+  
+  const handleRetrySave = () => {
+    setSaveError(null);
+    handleSaveToCloud();
+  };
+
+  const handleDownloadAndCloseModal = () => {
+    handleDownloadLocally();
+    setSaveError(null);
+  };
 
   return (
     <div className="w-full max-w-3xl mx-auto bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 relative">
+      {saveError && (
+         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-20 p-4">
+            <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full text-center">
+                <h2 className="text-xl font-bold text-gray-800">Errore di Salvataggio</h2>
+                <p className="text-gray-600 mt-2">{saveError}</p>
+                <div className="mt-6 flex flex-col gap-3">
+                    <button
+                        onClick={handleRetrySave}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-900 text-white font-semibold rounded-md shadow-sm hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75"
+                    >
+                        <SaveIcon />
+                        Riprova a Salvare
+                    </button>
+                    <button
+                        onClick={handleDownloadAndCloseModal}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-600 text-white font-semibold rounded-md hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                    >
+                        <DownloadIcon />
+                        Scarica Copia Locale
+                    </button>
+                     <button
+                        onClick={() => setSaveError(null)}
+                        className="text-sm text-gray-500 hover:underline mt-2"
+                    >
+                        Annulla
+                    </button>
+                </div>
+            </div>
+         </div>
+      )}
       {dateConflict && (
          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10 p-4">
             <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full text-center">

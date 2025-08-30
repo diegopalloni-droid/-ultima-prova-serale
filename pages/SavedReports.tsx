@@ -8,7 +8,6 @@ import { reportService } from '../services/reportService';
 import { userService } from '../services/userService';
 import { ArrowLeftIcon } from '../components/ArrowLeftIcon';
 import { DownloadIcon } from '../components/DownloadIcon';
-import { ChevronDownIcon } from '../components/ChevronDownIcon';
 
 interface SavedReportsProps {
   navigateTo: (page: Page) => void;
@@ -23,19 +22,23 @@ const formatDateForDisplay = (dateString: string): string => {
 const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport }) => {
   const { user, isMasterUser } = useAuth();
   const [savedReports, setSavedReports] = useState<SavedReport[]>([]);
+  const [filteredReports, setFilteredReports] = useState<SavedReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadingError, setLoadingError] = useState<string | null>(null);
   const [reportToDelete, setReportToDelete] = useState<SavedReport | null>(null);
   const [userMap, setUserMap] = useState<Map<string, string>>(new Map());
   
-  // State for master user UI enhancements
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortOrder, setSortOrder] = useState<'newest' | 'oldest'>('newest');
-  const [openAccordions, setOpenAccordions] = useState<Set<string>>(new Set());
+  // State for filtering
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [selectedUserId, setSelectedUserId] = useState<string>('all');
+  const [usersWithReports, setUsersWithReports] = useState<User[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
       if (!user) return;
       setIsLoading(true);
+      setLoadingError(null);
       try {
         const reports = await reportService.getReports(user, isMasterUser);
         setSavedReports(reports);
@@ -45,10 +48,15 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
           const newMap = new Map<string, string>();
           allUsers.forEach(u => newMap.set(u.id, u.name));
           setUserMap(newMap);
+
+          const reportUserIds = new Set(reports.map(r => r.userId));
+          const usersWhoHaveReports = allUsers.filter(u => reportUserIds.has(u.id));
+          setUsersWithReports(usersWhoHaveReports);
         }
 
       } catch (error) {
         console.error("Failed to load reports or users:", error);
+        setLoadingError("Impossibile caricare i report. Controlla la tua connessione o riprova più tardi.");
       } finally {
         setIsLoading(false);
       }
@@ -56,6 +64,29 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
 
     loadData();
   }, [user, isMasterUser]);
+
+  useEffect(() => {
+    let reportsToFilter = [...savedReports];
+
+    if (isMasterUser && selectedUserId !== 'all') {
+      reportsToFilter = reportsToFilter.filter(report => report.userId === selectedUserId);
+    }
+
+    if (startDate) {
+      const start = new Date(startDate + 'T00:00:00.000Z').getTime();
+      reportsToFilter = reportsToFilter.filter(report => new Date(report.date).getTime() >= start);
+    }
+
+    if (endDate) {
+      const end = new Date(endDate + 'T23:59:59.999Z').getTime();
+      reportsToFilter = reportsToFilter.filter(report => new Date(report.date).getTime() <= end);
+    }
+
+    reportsToFilter.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    setFilteredReports(reportsToFilter);
+  }, [savedReports, startDate, endDate, selectedUserId, isMasterUser]);
+
 
   const handleDownloadReport = (report: SavedReport) => {
     try {
@@ -123,125 +154,90 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
       setReportToDelete(null);
   };
   
-  const toggleAccordion = (userId: string) => {
-    setOpenAccordions(prev => {
-        const newSet = new Set(prev);
-        if (newSet.has(userId)) {
-            newSet.delete(userId);
-        } else {
-            newSet.add(userId);
-        }
-        return newSet;
-    });
+  const renderFilters = () => {
+    if (isMasterUser) {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 px-8">
+          <div>
+            <label htmlFor="user-filter" className="block text-sm font-medium text-gray-700 mb-1">Utente</label>
+            <select
+              id="user-filter"
+              value={selectedUserId}
+              onChange={(e) => setSelectedUserId(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">Tutti gli utenti</option>
+              {usersWithReports.map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 mb-1">Da</label>
+            <input
+              id="start-date"
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label htmlFor="end-date" className="block text-sm font-medium text-gray-700 mb-1">A</label>
+            <input
+              id="end-date"
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+      );
+    }
+    
+    // Regular user filters
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6 px-8">
+        <div>
+          <label htmlFor="start-date" className="block text-sm font-medium text-gray-700 mb-1">Da</label>
+          <input
+            id="start-date"
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <div>
+          <label htmlFor="end-date" className="block text-sm font-medium text-gray-700 mb-1">A</label>
+          <input
+            id="end-date"
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+    );
   };
 
-  const masterView = () => {
-    const groupedReports = savedReports.reduce((acc, report) => {
-      const userId = report.userId;
-      if (!acc.has(userId)) {
-        acc.set(userId, []);
-      }
-      acc.get(userId)!.push(report);
-      return acc;
-    }, new Map<string, SavedReport[]>());
-
-    const filteredUserIds = Array.from(groupedReports.keys()).filter(userId => {
-      const userName = userMap.get(userId) || userId;
-      return userName.toLowerCase().includes(searchQuery.toLowerCase());
-    });
-
-    return (
-      <>
-        <div className="flex flex-col sm:flex-row gap-4 mb-6 px-8">
-          <input
-            type="text"
-            placeholder="Cerca per utente..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full sm:w-2/3 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Cerca utente"
-          />
-          <select
-            value={sortOrder}
-            onChange={(e) => setSortOrder(e.target.value as 'newest' | 'oldest')}
-            className="w-full sm:w-1/3 px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            aria-label="Ordina report"
-          >
-            <option value="newest">Più recenti</option>
-            <option value="oldest">Meno recenti</option>
-          </select>
-        </div>
-        <div className="space-y-2 max-h-[28rem] overflow-y-auto px-8 pb-8">
-          {isLoading ? (
-            <p className="text-center text-gray-500 py-8">Caricamento report...</p>
-          ) : filteredUserIds.length > 0 ? (
-            filteredUserIds.map(userId => {
-              const reports = groupedReports.get(userId) || [];
-              reports.sort((a, b) => {
-                const dateA = new Date(a.date).getTime();
-                const dateB = new Date(b.date).getTime();
-                return sortOrder === 'newest' ? dateB - dateA : dateA - dateB;
-              });
-              const isOpen = openAccordions.has(userId);
-
-              return (
-                <div key={userId} className="rounded-lg border border-gray-200 overflow-hidden">
-                  <button
-                    onClick={() => toggleAccordion(userId)}
-                    className="w-full flex justify-between items-center p-4 bg-gray-50 hover:bg-gray-100 focus:outline-none"
-                  >
-                    <span className="font-bold text-gray-800">{userMap.get(userId) || userId}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded-full">{reports.length}</span>
-                      <ChevronDownIcon className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-                    </div>
-                  </button>
-                  {isOpen && (
-                    <div className="p-4 space-y-3 bg-white">
-                      {reports.map(report => (
-                         <div key={report.key} className="bg-gray-50 p-3 rounded-md border border-gray-200 flex justify-between items-center">
-                           <div>
-                             <h3 className="font-semibold text-gray-700">{formatDateForDisplay(report.date)}</h3>
-                             <p className="text-sm text-gray-500 truncate max-w-xs">{report.text.split('\n')[2] || 'Nessun contenuto'}</p>
-                           </div>
-                           <div className="flex items-center gap-1">
-                             <button onClick={() => handleDownloadReport(report)} className="p-2 text-green-600 hover:bg-green-100 rounded-md transition-colors" aria-label="Scarica report">
-                               <DownloadIcon />
-                             </button>
-                             <button onClick={() => onEditReport(report)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-md transition-colors" aria-label="Modifica report">
-                               <EditIcon />
-                             </button>
-                             <button onClick={() => setReportToDelete(report)} className="p-2 text-red-600 hover:bg-red-100 rounded-md transition-colors" aria-label="Elimina report">
-                               <TrashIcon />
-                             </button>
-                           </div>
-                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          ) : (
-             <p className="text-center text-gray-500 py-8">Nessun report trovato.</p>
-          )}
-        </div>
-      </>
-    );
-  }
-
-  const userView = () => (
+  const renderReportList = () => (
     <div className="space-y-4 max-h-96 overflow-y-auto pr-2 px-8 pb-8">
-      {isLoading ? (
-         <p className="text-center text-gray-500 py-8">Caricamento report...</p>
-      ) : savedReports.length > 0 ? (
-        savedReports.map((report) => (
-          <div key={report.key} className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex justify-between items-center">
+      {filteredReports.length > 0 ? (
+        filteredReports.map((report) => (
+          <div key={report.key} className="bg-gray-50 p-4 rounded-lg border border-gray-200 flex flex-col sm:flex-row justify-between sm:items-center gap-3">
             <div>
               <h3 className="font-bold text-gray-800">{formatDateForDisplay(report.date)}</h3>
+              {isMasterUser && (
+                <p className="text-sm font-semibold text-blue-800 bg-blue-100 px-2 py-0.5 rounded-full inline-block my-1">
+                  {userMap.get(report.userId) || 'Utente Sconosciuto'}
+                </p>
+              )}
               <p className="text-sm text-gray-500 truncate max-w-sm">{report.text.split('\n')[2] || 'Nessun contenuto'}</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 self-end sm:self-center">
               <button onClick={() => handleDownloadReport(report)} className="p-2 text-green-600 hover:bg-green-100 rounded-md transition-colors" aria-label="Scarica report">
                 <DownloadIcon />
               </button>
@@ -255,13 +251,13 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
           </div>
         ))
       ) : (
-        <p className="text-center text-gray-500 py-8">Nessun report salvato trovato.</p>
+        <p className="text-center text-gray-500 py-8">Nessun report trovato con i filtri correnti.</p>
       )}
     </div>
-  )
+  );
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 relative">
+    <div className="w-full max-w-4xl mx-auto bg-white rounded-lg shadow-md overflow-hidden border border-gray-200 relative">
        {reportToDelete && (
         <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-10 p-4">
             <div className="bg-white rounded-lg shadow-xl p-6 max-w-sm w-full text-center">
@@ -298,11 +294,20 @@ const SavedReports: React.FC<SavedReportsProps> = ({ navigateTo, onEditReport })
             <h1 className="text-3xl font-bold tracking-tight text-slate-800">Report Salvati</h1>
           </div>
           <p className="mt-2 text-center text-gray-500">
-            {isMasterUser ? "Stai visualizzando i report di tutti gli utenti." : "Elenco dei tuoi report salvati nell'ultimo mese."}
+            {isMasterUser ? "Filtra e visualizza i report di tutti gli utenti." : "Filtra e visualizza i tuoi report salvati."}
           </p>
         </header>
         
-        {isMasterUser ? masterView() : userView()}
+        {isLoading ? (
+          <p className="text-center text-gray-500 py-8">Caricamento report...</p>
+        ) : loadingError ? (
+          <p className="text-center text-red-600 font-semibold py-8">{loadingError}</p>
+        ) : (
+          <>
+            {renderFilters()}
+            {renderReportList()}
+          </>
+        )}
       </div>
     </div>
   );
